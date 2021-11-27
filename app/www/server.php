@@ -3,25 +3,36 @@
 // required password to write database
 // leave empty to do not require password at all (not recommended)
 // TODO change following option
-define("PASSWORD", "Change This");
 
-// require password for reading database
-define("REQUIRE_PASSWORD_READING", true);
+require_once(__DIR__ . '/../config.php');
 
 // Path to kdbx databases
-define("BASE_PATH", __DIR__ . "/databases");
+define("BASE_PATH", __DIR__ . "/../../store/databases");
+define("BACK_PATH", __DIR__ . "/../../store/backup");
+
 
 function require_authorization() {
-    $valid_password = PASSWORD;
-    if (empty($valid_password))
-        return;
+    if (defined("PASSWORD")){
+        $valid_password = PASSWORD;
 
-    $password = !empty($_SERVER["HTTP_AUTHORIZATION"]) ? $_SERVER["HTTP_AUTHORIZATION"] : "";
+        $password = !empty($_SERVER["HTTP_AUTHORIZATION"]) ? $_SERVER["HTTP_AUTHORIZATION"] : "";
 
-    if (empty($password) || $password !== $valid_password) {
-        header('HTTP/1.0 401 Unauthorized');
-        die ("Not authorized");
+        if (empty($password) || $password !== $valid_password) {
+            header('HTTP/1.0 401 Unauthorized');
+            die ("Not authorized PASSWORD");
+        }else{
+            return true;
+        }
+
+    }elseif(defined("OAUTH_SERVER")){
+        if (isset($_SESSION['oauth_gitlab']) &&  $_SESSION['oauth_gitlab'] ){
+            return true;
+        }else{
+            die ("Not authorized OAUTH");
+            header("Location: auth/gitlab.php");
+        }
     }
+    die();
 }
 
 function clean_filename($file) {
@@ -38,7 +49,7 @@ function validate_file($path) {
 }
 
 if (isset($_GET["path"])) {
-    if (REQUIRE_PASSWORD_READING)
+    if (REQUIRE_AUTH_READING)
         require_authorization();
 
     $files = glob(BASE_PATH . "/*.kdbx");
@@ -57,7 +68,7 @@ if (isset($_GET["path"])) {
 }
 
 if (isset($_GET["file"])) {
-    if (REQUIRE_PASSWORD_READING)
+    if (REQUIRE_AUTH_READING)
         require_authorization();
 
     $file = BASE_PATH . "/" . clean_filename($_GET["file"]);
@@ -71,7 +82,7 @@ if (isset($_GET["file"])) {
 }
 
 if (isset($_GET["stat"])) {
-    if (REQUIRE_PASSWORD_READING)
+    if (REQUIRE_AUTH_READING)
         require_authorization();
 
     $file = BASE_PATH . "/" . clean_filename($_GET["stat"]);
@@ -87,6 +98,7 @@ if (isset($_GET["save"])) {
     require_authorization();
 
     $file = BASE_PATH . "/" . clean_filename($_GET["save"]);
+    $backfile = BACK_PATH . "/" . clean_filename($_GET["save"]).'~'.date("Y-m-d_H-i-s");
     validate_file($file);
 
     $rev = $_GET["rev"];
@@ -100,8 +112,17 @@ if (isset($_GET["save"])) {
     }
 
     $contents = file_get_contents("php://input");
-    if (strlen($contents) > 0)
+    //error_log(disk_free_space(BACK_PATH));
+    // TODO autoclean store backups
+    
+    if (strlen($contents) > 0){
+        copy($file, $backfile);
         file_put_contents($file, $contents);
+
+        $log="$file updated by ".(isset($_SESSION['username'])?$_SESSION['username']:'PASSWORD')." at ".date("Y-m-d_H-i-s").PHP_EOL;
+        file_put_contents(BACK_PATH . "/saves.log",$log,FILE_APPEND);
+        error_log($log);
+    }
 
     clearstatcache();
     header('Last-Modified: '.gmdate('D, d M Y H:i:s', filemtime($file)).' GMT', true, 200);
