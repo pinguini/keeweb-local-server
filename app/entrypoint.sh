@@ -8,6 +8,7 @@
 
 if [ ! -f /opt/store/databases/Demo.kdbx ]; then
     echo "Demo is not exists. Copying"
+    mkdir -p /opt/store/databases /opt/store/backup
     cp /opt/app/Demo.kdbx /opt/store/databases/
 fi
 
